@@ -1,0 +1,21 @@
+{
+  "doc_name": "chai_six",
+  "output_dir": ".",
+  "formats": ["9x16", "1x1", "16x9"],
+  "font_dir": "/Users/gagan/Library/CloudStorage/Dropbox/spicepilgrim/social media/chai/fonts",
+  "fallback_font_dir": "/var/folders/.../canvas-design/canvas-fonts",
+  "audio": null,
+  "transition": "fade",
+  "transition_dur": 1.0,
+  "_comment": "Replace image paths with your own. focus_x biases the crop horizontally (0=left, 1=right) so the tin/subject stays in frame on tall crops.",
+  "beats": [
+    {"type": "card",  "overline": "THE CHAI COLLECTION", "headline": "Six Chais,\nOne Ritual", "desc": "Hand-blended · stone-ground", "dur": 3.8},
+    {"type": "photo", "image": "chai/masala.png",         "overline": "N° 01 · SIGNATURE",     "headline": "Masala",          "desc": "Bold, warm, the original",    "index": "01 / 06", "focus_x": 0.5,  "dur": 5.6},
+    {"type": "photo", "image": "chai/vanilla.png",        "overline": "N° 02 · SMOOTH",        "headline": "Vanilla",         "desc": "Soft vanilla, slow comfort",  "index": "02 / 06", "focus_x": 0.74, "dur": 5.6},
+    {"type": "photo", "image": "chai/rooibos.png",        "overline": "N° 03 · CAFFEINE-FREE", "headline": "Rooibos",         "desc": "Earthy, calm, grounding",     "index": "03 / 06", "focus_x": 0.5,  "dur": 5.6},
+    {"type": "photo", "image": "chai/apple-cinnamon.png", "overline": "N° 04 · SEASONAL",      "headline": "Apple Cinnamon",  "desc": "Orchard spice in a cup",      "index": "04 / 06", "focus_x": 0.74, "dur": 5.6},
+    {"type": "photo", "image": "chai/chocolate.png",      "overline": "N° 05 · INDULGENT",     "headline": "Chocolate",       "desc": "Cocoa meets cardamom",        "index": "05 / 06", "focus_x": 0.5,  "dur": 5.6},
+    {"type": "photo", "image": "chai/rooibos-vanilla.png","overline": "N° 06 · BEDTIME",       "headline": "Rooibos Vanilla", "desc": "Smooth, sweet, caffeine-free","index": "06 / 06", "focus_x": 0.5,  "dur": 5.6},
+    {"type": "card",  "overline": "FIND YOURS", "headline": "Spice Pilgrim", "desc": "Portland, OR · spicepilgrim.com", "dur": 4.4}
+  ]
+}
