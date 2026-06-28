@@ -15,7 +15,10 @@ sp-skills-agents/
 │       ├── references/        # brand-design-system.md (fonts/colors)
 │       ├── examples/          # example configs (chai_collection.json)
 │       └── LEARNINGS.md       # the skill's memory — append after every use
-└── agents/                    # (future) SP agent definitions, e.g. "Video Head"
+└── agents/
+    └── video-head/            # orchestrator: owns SP social video end-to-end
+        ├── AGENT.md
+        └── LEARNINGS.md
 ```
 
 ## The self-improving convention
@@ -31,6 +34,12 @@ memory between runs.
 | Skill | What it does | Status |
 |---|---|---|
 | `sp-stills-reel` | Photos + captions → branded multi-format social video, free | active (v1) |
+
+## Agents
+
+| Agent | What it does | Status |
+|---|---|---|
+| `video-head` | Orchestrates SP social video end-to-end (concept→script→render→captions→QA→deliver); delegates to sub-roles; uses `sp-stills-reel` | active (v1) |
 
 ## Requirements
 

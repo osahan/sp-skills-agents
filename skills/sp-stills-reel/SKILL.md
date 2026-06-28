@@ -85,6 +85,15 @@ See `examples/chai_collection.json` for the full schema. Fields:
 and `beats[]`. Each beat: `type` (`card`|`photo`), `overline`, `headline`
 (`\n` allowed), `desc`, `index`, `image` (photo beats), `focus_x`, `dur`.
 
+## Audio (music + voiceover)
+The renderer mixes optional `music` (full bed if alone, auto-ducked under VO when
+both present) and `voiceover` (laid on top, optional `voiceover_start` delay), each
+with fades — set them in the config. Audio must arrive as **files** (the sandbox
+can't synthesize). For generating a voiceover locally (VibeVoice on a Mac, its real
+limitations, and why VoiceBox may be the better brand-VO choice), see
+`references/audio-vibevoice-local.md`. For music, generate a few signature tracks
+once (Suno/MusicFX) and reuse them — don't regenerate per video.
+
 ## Known environment constraints (don't relearn these)
 - **No web binary fetch / no TTS / no music gen** in the sandbox — audio & images
   come in as files; the script only *mixes* provided audio.

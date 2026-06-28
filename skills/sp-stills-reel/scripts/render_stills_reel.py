@@ -116,6 +116,16 @@ def overlay_photo(W, H, ov, hl, desc, idx, F, C):
         tracked(d, (W-L-iw, int(H*0.905)), idx, f_ix, C["copper"], int(W*0.006))
     return im
 
+def overlay_vignette(W, H):
+    """Clean cinematic vignette for caption-less 'film' beats (VO-driven pieces).
+    Subtle edge darkening, transparent center — lets the photo + voiceover carry."""
+    im = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    v = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(v).ellipse([-W*0.15, -H*0.10, W*1.15, H*1.10], fill=255)
+    v = v.filter(ImageFilter.GaussianBlur(int(min(W, H) * 0.18)))
+    dark = Image.new("RGBA", (W, H), (6, 4, 3, 90))
+    return Image.composite(Image.new("RGBA", (W, H), (0, 0, 0, 0)), dark, v)
+
 def overlay_card(W, H, ov, hl, desc, F, C):
     im = Image.new("RGBA", (W, H), (0, 0, 0, 0)); d = ImageDraw.Draw(im)
     f_ov = ImageFont.truetype(F["body_bold"], int(W*0.030)); f_de = ImageFont.truetype(F["body"], int(W*0.036))
@@ -142,22 +152,35 @@ def render_format(cfg, fmt, F, C):
     wd = os.path.join("/tmp", f"sp_reel_{name}_{fmt}"); os.makedirs(wd, exist_ok=True)
     T = float(cfg.get("transition_dur", 1.0)); trans = cfg.get("transition", "fade")
     beats = cfg["beats"]; clips = []; durs = []
+    SS = float(cfg.get("supersample", 2))   # render Ken Burns at SSx, then downscale -> kills zoompan pixel-step jitter
+    WS, HS = int(round(W * SS)), int(round(H * SS))
     for i, b in enumerate(beats):
         dur = float(b.get("dur", 5.6 if b["type"] == "photo" else 3.8)); durs.append(dur)
+        cp = f"{wd}/c{i}.mp4"
+        if os.path.exists(cp) and os.path.getsize(cp) > 20000:
+            clips.append(cp); continue          # resume: this clip is already rendered
         if b["type"] == "photo":
-            base = base_photo(b["image"], W, H, float(b.get("focus_x", 0.5)), float(cfg.get("photo_dim", 0.96)))
-            txt = overlay_photo(W, H, b.get("overline", ""), b["headline"], b.get("desc", ""), b.get("index", ""), F, C)
+            base = base_photo(b["image"], WS, HS, float(b.get("focus_x", 0.5)), float(cfg.get("photo_dim", 0.96)))
+            has_text = any(b.get(k) for k in ("overline", "headline", "desc", "index"))
+            if has_text:
+                txt = overlay_photo(W, H, b.get("overline", ""), b.get("headline", ""), b.get("desc", ""), b.get("index", ""), F, C)
+            else:  # clean cinematic beat (no caption) — for VO-driven films
+                txt = overlay_vignette(W, H)
         else:
-            base = base_card(W, H, C["char"], C["copper"])
+            base = base_card(WS, HS, C["char"], C["copper"])
             txt = overlay_card(W, H, b.get("overline", ""), b["headline"], b.get("desc", ""), F, C)
-        bp = f"{wd}/b{i}.png"; base.save(bp); tp = f"{wd}/t{i}.png"; txt.save(tp); cp = f"{wd}/c{i}.mp4"
+        bp = f"{wd}/b{i}.png"; base.save(bp); tp = f"{wd}/t{i}.png"; txt.save(tp)
         zin = "zoom+0.0006" if i % 2 == 0 else "if(eq(on,1),1.07,zoom-0.0006)"
-        vf = (f"[0:v]scale={int(W*1.3)}:{int(H*1.3)},zoompan=z='min({zin},1.08)':d={int(dur*FPS)}:"
-              f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={W}x{H}:fps={FPS}[bg];"
+        # zoompan runs on the SSx canvas (integer pan rounding is sub-pixel at final res), then lanczos downscale = smooth glide
+        vf = (f"[0:v]zoompan=z='min({zin},1.08)':d={int(dur*FPS)}:"
+              f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={WS}x{HS}:fps={FPS},"
+              f"scale={W}:{H}:flags=bilinear[bg];"
               f"[1:v]format=rgba,fade=t=in:st=0:d=0.6:alpha=1[tx];[bg][tx]overlay=0:0,format=yuv420p[v]")
+        tmp = f"{wd}/c{i}.tmp.mp4"               # atomic write: a killed render never leaves a corrupt clip
         run(["ffmpeg", "-y", "-loglevel", "error", "-loop", "1", "-i", bp, "-loop", "1", "-i", tp,
              "-filter_complex", vf, "-map", "[v]", "-t", str(dur), "-r", str(FPS),
-             "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", cp])
+             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-pix_fmt", "yuv420p", tmp])
+        os.replace(tmp, cp)
         clips.append(cp)
     # xfade chain
     ins = []
@@ -169,16 +192,48 @@ def render_format(cfg, fmt, F, C):
     silent = os.path.join(out_dir, f"{name}_{fmt}.mp4")
     run(["ffmpeg", "-y", "-loglevel", "error", *ins, "-filter_complex", fc, "-map", f"[{prev}]",
          "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart", silent])
-    # optional audio
-    audio = cfg.get("audio")
-    if audio and os.path.exists(audio):
-        outp = os.path.join(out_dir, f"{name}_{fmt}_audio.mp4")
-        af = f"afade=t=in:st=0:d=1.5,afade=t=out:st={max(0,total-2):.2f}:d=2"
-        run(["ffmpeg", "-y", "-loglevel", "error", "-i", silent, "-i", audio,
-             "-filter_complex", f"[1:a]{af}[a]", "-map", "0:v", "-map", "[a]",
-             "-c:v", "copy", "-c:a", "aac", "-shortest", outp])
-        print(f"  wrote {outp} ({total:.1f}s, with audio)")
+    mux_audio(cfg, silent, out_dir, name, fmt, total)
     print(f"  wrote {silent} ({total:.1f}s)")
+
+def mux_audio(cfg, silent, out_dir, name, fmt, total):
+    """Mix optional music (bed) + voiceover into the silent reel.
+    - music: full-volume bed if alone; ducked under VO if both present.
+    - voiceover: laid on top, optionally delayed by voiceover_start seconds.
+    Both get gentle fades. Output length tracks the video (-shortest)."""
+    music = cfg.get("music") or cfg.get("audio")
+    vo = cfg.get("voiceover")
+    music = music if (music and os.path.exists(music)) else None
+    vo = vo if (vo and os.path.exists(vo)) else None
+    if not music and not vo:
+        return
+    outp = os.path.join(out_dir, f"{name}_{fmt}_audio.mp4")
+    fout = max(0.0, total - 2)
+    ins = ["-i", silent]
+    if music:
+        ins += ["-i", music]
+    if vo:
+        ins += ["-i", vo]
+    music_idx = 1 if music else None
+    vo_idx = (2 if music else 1) if vo else None
+    music_gain = float(cfg.get("music_gain", 0.22 if vo else 1.0))
+    vo_start = float(cfg.get("voiceover_start", 0.0))
+    parts = []
+    if music:
+        parts.append(f"[{music_idx}:a]volume={music_gain},afade=t=in:st=0:d=1.5,afade=t=out:st={fout:.2f}:d=2[m]")
+    if vo:
+        delay = int(vo_start * 1000)
+        parts.append(f"[{vo_idx}:a]adelay={delay}|{delay},afade=t=in:st={vo_start:.2f}:d=0.3[v]")
+    if music and vo:
+        parts.append("[m][v]amix=inputs=2:duration=first:normalize=0[a]")
+        amap = "[a]"
+    elif music:
+        amap = "[m]"
+    else:
+        amap = "[v]"
+    run(["ffmpeg", "-y", "-loglevel", "error", *ins, "-filter_complex", ";".join(parts),
+         "-map", "0:v", "-map", amap, "-c:v", "copy", "-c:a", "aac", "-shortest", outp])
+    tag = "music+VO" if (music and vo) else ("music" if music else "VO")
+    print(f"  wrote {outp} (with {tag})")
 
 def main():
     if len(sys.argv) < 2:
