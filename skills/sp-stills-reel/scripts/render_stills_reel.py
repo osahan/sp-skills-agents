@@ -28,26 +28,47 @@ See examples/chai_collection.json for the config schema. Key ideas baked in
 Render reliability note: render each beat to its own clip, THEN stitch. A long
 single ffmpeg pass can exceed sandbox time limits; clips are cheap to resume.
 """
-import json, os, sys, subprocess, math
+import json, os, sys, subprocess, math, glob
 from PIL import Image, ImageFilter, ImageEnhance, ImageDraw, ImageFont
 
 # ----------------------------- font resolution -----------------------------
 # Priority: explicit path -> font_dir/<google name> -> fallback_dir look-alike -> DejaVu
-GOOGLE = {
+GOOGLE = {  # preferred exact filenames if present
     "head": "PlayfairDisplay-Regular.ttf",
     "body": "OpenSans-Regular.ttf",
     "body_bold": "OpenSans-Bold.ttf",
 }
-FALLBACK = {  # decent stand-ins if the real brand fonts aren't present
-    "head": ["Lora-Regular.ttf", "PlayfairDisplay-Regular.ttf", "DejaVuSerif.ttf"],
-    "body": ["WorkSans-Regular.ttf", "OpenSans-Regular.ttf", "DejaVuSans.ttf"],
-    "body_bold": ["WorkSans-Bold.ttf", "OpenSans-Bold.ttf", "DejaVuSans-Bold.ttf"],
+FAMILY_KEYS = {  # fuzzy match any file containing these (static OR variable, e.g. "OpenSans[wght].ttf")
+    "head": ["playfair"],
+    "body": ["opensans", "open sans", "open-sans"],
+    "body_bold": ["opensans", "open sans", "open-sans"],
 }
-DEJAVU = {
-    "head": "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
-    "body": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    "body_bold": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+SYS_FALLBACK = {  # graceful cross-platform fallback so a missing brand font degrades instead of crashing
+    "head": ["/System/Library/Fonts/Supplemental/Georgia.ttf", "/Library/Fonts/Georgia.ttf",
+             "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"],
+    "body": ["/System/Library/Fonts/Supplemental/Arial.ttf", "/System/Library/Fonts/Helvetica.ttc",
+             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"],
+    "body_bold": ["/System/Library/Fonts/Supplemental/Arial Bold.ttf", "/System/Library/Fonts/Supplemental/Arial.ttf",
+                  "/System/Library/Fonts/Helvetica.ttc", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"],
 }
+
+def _scan_dir(d, role):
+    if not d or not os.path.isdir(d):
+        return None
+    want_bold = (role == "body_bold")
+    for p in sorted(glob.glob(os.path.join(d, "*.ttf")) + glob.glob(os.path.join(d, "*.otf"))):
+        n = os.path.basename(p).lower().replace(" ", "")
+        if not any(k.replace(" ", "") in n for k in FAMILY_KEYS[role]):
+            continue
+        if "italic" in n:
+            continue
+        is_bold = "bold" in n
+        if want_bold and not is_bold:
+            continue
+        if not want_bold and is_bold:
+            continue
+        return p
+    return None
 
 def resolve_font(role, cfg):
     explicit = (cfg.get("fonts") or {}).get(role)
@@ -56,14 +77,18 @@ def resolve_font(role, cfg):
     for d in [cfg.get("font_dir"), cfg.get("fallback_font_dir")]:
         if d and os.path.exists(os.path.join(d, GOOGLE[role])):
             return os.path.join(d, GOOGLE[role]), False
-    for d in [cfg.get("fallback_font_dir")]:
-        if d:
-            for cand in FALLBACK[role]:
-                if os.path.exists(os.path.join(d, cand)):
-                    return os.path.join(d, cand), True  # stand-in
-    if os.path.exists(DEJAVU[role]):
-        return DEJAVU[role], True
-    raise SystemExit(f"No font found for '{role}'. Provide fonts.{role} or font_dir in config.")
+        hit = _scan_dir(d, role)
+        if hit:
+            return hit, False
+    if role == "body_bold":   # no bold file -> reuse the regular brand font, not a system one
+        try:
+            return resolve_font("body", cfg)
+        except SystemExit:
+            pass
+    for p in SYS_FALLBACK[role]:
+        if os.path.exists(p):
+            return p, True
+    raise SystemExit(f"No font for '{role}'. Drop a Playfair Display / Open Sans .ttf in {cfg.get('font_dir')!r}, or set fonts.{role} in the config.")
 
 # ----------------------------- image helpers -----------------------------
 def cover(img, w, h, fx=0.5):
